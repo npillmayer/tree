@@ -39,9 +39,9 @@ var ErrNoMoreFiltersAccepted = errors.New("in promise mode; will not accept new 
 // A typical usage of a Walker looks like this ("FindNodesAndDoSomething()" is
 // a placeholder for a sequence of function calls, see below):
 //
-//    w := NewWalker(node)
-//    futureResult := w.FindNodesAndDoSomething(...).Promise()
-//    nodes, err := futureResult()
+//	w := NewWalker(node)
+//	futureResult := w.FindNodesAndDoSomething(...).Promise()
+//	nodes, err := futureResult()
 //
 // Walker support a set of search & filter functions. Clients will chain
 // some of these to perform tasks on tree nodes (see examples).
@@ -371,7 +371,7 @@ func (w *Walker[S, T]) Filter(f Predicate[T]) *Walker[S, T] {
 	return newW
 }
 
-//func clientFilter(node *Node, isBuffered bool, udata userdata, push func(*Node, uint32),
+// func clientFilter(node *Node, isBuffered bool, udata userdata, push func(*Node, uint32),
 func clientFilter[T comparable](node *Node[T], isBuffered bool, udata userdata, push func(*Node[T], uint32),
 	pushBuf func(*Node[T], interface{}, uint32)) error {
 	//
@@ -454,6 +454,7 @@ func topDown[T comparable](node *Node[T], isBuffered bool, udata userdata, push 
 type bottomUpFilterData[T comparable] struct {
 	action       Action[T]
 	childrenDict *rankMap[T]
+	started      sync.Map // node -> claimed; one action per node per traversal
 }
 
 // BottomUp traverses a tree starting at (and including) all the current nodes.
@@ -500,6 +501,14 @@ func bottomUp[T comparable](node *Node[T], isBuffered bool, udata userdata, push
 	}
 	serial := udata.serial
 	if isBuffered { // node was received from buffer queue
+		// Several child completions may queue the same parent before any worker
+		// observes readiness. Claim it once, after the child-count check above.
+		// Get/Inc on childrenDict publish child actions before the parent reads
+		// their results; claiming prevents later duplicate writes to those results.
+		data := udata.filterlocal.(*bottomUpFilterData[T])
+		if _, claimed := data.started.LoadOrStore(node, struct{}{}); claimed {
+			return nil
+		}
 		position := 0
 		parent := node.Parent()
 		if parent != nil {

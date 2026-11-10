@@ -3,6 +3,7 @@ package tree
 import (
 	"fmt"
 	"runtime"
+	"sync"
 	"testing"
 	"time"
 
@@ -209,10 +210,13 @@ func TestTopDown1(t *testing.T) {
 	root, n2, n3, n4 := NewNode(1), NewNode(2), NewNode(10), NewNode(10)
 	root.AddChild(n2).AddChild(n4)
 	n2.AddChild(n3)
+	var actionMu sync.Mutex
 	i := 0
 	myaction := func(n *Node[int], parent *Node[int], position int) (*Node[int], error) {
 		tracer().Debugf("input node is %v", n)
+		actionMu.Lock()
 		i++
+		actionMu.Unlock()
 		return n, nil
 	}
 	future := NewWalker(root).TopDown(myaction).Promise()
@@ -240,12 +244,15 @@ func TestBottomUp1(t *testing.T) {
 	root, n2, n3, n4 := NewNode(3), NewNode(2), NewNode(1), NewNode(1)
 	root.AddChild(n2).AddChild(n4)
 	n2.AddChild(n3)
+	var actionMu sync.Mutex
 	i := 0
 	nodevals := make([]int, 4)
 	myaction := func(n *Node[int], parent *Node[int], position int) (*Node[int], error) {
 		tracer().Debugf("node has value=%v", n.Payload)
+		actionMu.Lock()
 		nodevals[i] = n.Payload
 		i++
+		actionMu.Unlock()
 		return n, nil
 	}
 	future := NewWalker(n3).BottomUp(myaction).Promise()
@@ -274,12 +281,15 @@ func TestBottomUp2(t *testing.T) {
 	root, n2, n3, n4 := NewNode(3), NewNode(2), NewNode(1), NewNode(1)
 	root.AddChild(n2).AddChild(n4)
 	n2.AddChild(n3)
+	var actionMu sync.Mutex
 	i := 0
 	nodevals := make([]int, 6)
 	myaction := func(n *Node[int], parent *Node[int], position int) (*Node[int], error) {
 		tracer().Debugf("node has value=%v", n.Payload)
+		actionMu.Lock()
 		nodevals[i] = n.Payload
 		i++
+		actionMu.Unlock()
 		return n, nil
 	}
 	future := NewWalker(root).DescendentsWith(NodeIsLeaf[int]()).BottomUp(myaction).Promise()
